@@ -16,16 +16,17 @@
   * named pipe on windows or unix domain socket on unix
   * tcp socket on windows/unix
 * listen for Neovim ui events, sync request, async notify
-* register plugin functions, commands, autocmd utilities
+* register plugin functions, commands, autocmds utilities
 
 ### Documentation
 
 I already compiled a detailed technical documentation covering Neovim
 plugin architecture, RPC transport layer, RPC API call, registering plugin host and functions,
 from various sources, such as Neovim Go-Client, Racket-Client, Neovim rpc documentation, etc.
-You can start writing your plugin or application by reading these materials:
-  * [Technical Reference](docs/explained.md)
-  * [Tutorial](docs/tutorial.md)
+
+  * [Technical Reference](docs/explained.md) of this library internals, useful
+    if you want to write your own client-library or hacking this library.
+  * [Tutorial](docs/tutorial.md), for you who wants to write plugin, ui app, or embedding Neovim.
 
 ### How To Install
 
