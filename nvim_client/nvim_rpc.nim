@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 #-------------------------------------
 
-import winlean, os, macros, msgpack4nim as msgpack, msgpack2any
+import macros, msgpack4nim as msgpack, msgpack2any, nvim_transport
 
 type
   MessageType = enum
@@ -30,9 +30,6 @@ type
     Notification = 2
 
 type
-  TransportLayer = object
-    hPipe: Handle
-
   NvimRpc* = ref object
     io: TransportLayer
     msgId: int
@@ -199,76 +196,20 @@ proc toBatchResult*(msg: MsgAny, batch: NvimBatch, rpc: NvimRpc): seq[BatchResul
     of brkTabPage: result[i] = BatchResult(kind: brkTabPage, tabVal: msg[0][i].toTabPage(rpc))
     of brkBuffer: result[i] = BatchResult(kind: brkBuffer, bufVal: msg[0][i].toBuffer(rpc))
     of brkVoid, brkError: discard
-
-proc initTransportLayer*(): TransportLayer =
-  result.hPipe = Handle(0)
-
-proc waitNamedPipeW(name: WideCString, nTimeOut: DWORD): WINBOOL {.
-  stdcall, dynlib: "kernel32", importc: "WaitNamedPipeW".}
-
-proc connect*(self: var TransportLayer, address: string, timeOut: int): bool =
-  const
-    #PIPE_TYPE_MESSAGE      = 0x00000004'i32
-    #PIPE_READMODE_MESSAGE  = 0x00000002'i32
-    ERROR_PIPE_BUSY        = 231
-
-  let pipeName = newWideCString(address)
-  let openMode = GENERIC_READ or GENERIC_WRITE
-
-  # Try to open a named pipe; wait for it, if necessary.
-  while true:
-    self.hPipe = createFileW(pipeName, openMode, 0, nil, OPEN_EXISTING, 0, 0.Handle)
-
-    # Break if the pipe handle is valid.
-    if self.hPipe != INVALID_HANDLE_VALUE: break
-
-    # Exit if an error other than ERROR_PIPE_BUSY occurs.
-    if getLastError() != ERROR_PIPE_BUSY:
-       echo "Could not open pipe. GLE = ", getLastError()
-       return false
-
-    # All pipe instances are busy, so wait for 20 seconds.
-    if waitNamedPipeW(pipeName, timeOut.DWORD) == 0:
-       echo "Could not open pipe: " & $timeOut & "ms wait timed out."
-       return false
-
-  result = true
-
-proc write*(self: var TransportLayer, data: string): bool =
-  var dwWritten: int32
-  if self.hPipe == INVALID_HANDLE_VALUE: return false
-  let res = writeFile(self.hPipe, data.cstring, data.len.int32, dwWritten.addr, nil)
-  result = res != 0 and dwWritten == data.len.int32
-
-proc read*(self: var TransportLayer, buffer: var string): int =
-  var
-    bytesRead = 0'i32
-    temp: array[2048, char]
-    totalRead = 0
-    success = false
-    bytesAvail = 0'i32
-
-  while true:
-    success = readFile(self.hPipe, cast[cstring](temp[0].addr), temp.len.int32, bytesRead.addr, nil) == 1
-    if buffer.len + bytesRead.int > buffer.len:
-       buffer.setLen(buffer.len + bytesRead.int)
-
-    copyMem(buffer[totalRead].addr, temp[0].addr, bytesRead.int)
-    inc(totalRead, bytesRead.int)
-
-    if peekNamedPipe(self.hPipe, nil, 0'i32, nil, bytesAvail.addr, nil) and bytesAvail == 0:
-      break
-
-    bytesRead = 0'i32
-
-  result = totalRead
-
-proc close*(self: var TransportLayer) =
-  discard closeHandle(self.hPipe)
-
-proc rpc_connect*(address: string, timeOut: int): NvimRpc =
+    
+proc rpc_connect_pipe*(address: string, timeOut: int): NvimRpc =
   new(result)
-  result.io = initTransportLayer()
+  result.io = initTransportLayer(tkPipe)
+  if result.io.connect(address, timeOut):
+    result.output = initMsgStream(1024)
+    result.input = newString(4096)
+    result.msgId = 0
+    return result
+  result = nil
+  
+proc rpc_connect_stdio*(address: string, timeOut: int): NvimRpc =
+  new(result)
+  result.io = initTransportLayer(tkStdio)
   if result.io.connect(address, timeOut):
     result.output = initMsgStream(1024)
     result.input = newString(4096)

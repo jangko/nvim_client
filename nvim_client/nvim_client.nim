@@ -24,8 +24,11 @@
 import nvim_rpc, msgpack4nim, msgpack2any
 export nvim_rpc, msgpack4nim, msgpack2any
 
-proc nvimClientConnect*(address: string, timeOut = 5000): NvimClient =
-  result.rpc = rpc_connect(address, timeOut)
+proc nvimClientConnectPipe*(address: string, timeOut = 5000): NvimClient =
+  result.rpc = rpc_connect_pipe(address, timeOut)
+  
+proc nvimClientConnectStdio*(address: string, timeOut = 5000): NvimClient =
+  result.rpc = rpc_connect_stdio(address, timeOut)
 
 proc close*(self: NvimClient) =
   self.rpc.close()
