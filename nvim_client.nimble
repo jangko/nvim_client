@@ -7,3 +7,4 @@ license       = "MIT"
 
 [Deps]
 Requires: "nim >= 0.18.1"
+Requires: "msgpack4nim >= 0.2.2"

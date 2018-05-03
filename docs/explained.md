@@ -1,5 +1,4 @@
 # Neovim Client Explained
----
 
 ## General Overview
 
@@ -117,7 +116,7 @@ There are several ways to open a channel:
 
   * By another process connecting to a socket listened to by nvim. This only
      supports RPC channels, see |rpc-connecting|.
-     
+
 The current address in Neovim can be obtained with `:echo v:servername` or `:echo $NVIM_LISTEN_ADDRESS`
 
 Windows
@@ -147,7 +146,7 @@ how to test your plugin/client during development
 NVIM_LISTEN_ADDRESS
 $ NVIM_LISTEN_ADDRESS=/tmp/nvim nvim
 * (ql:quickload :cl-neovim)
-* (nvim:connect :file "/tmp/nvim") 
+* (nvim:connect :file "/tmp/nvim")
 * (nvim:command "echo 'Hello from Common Lisp!'")
 
 
@@ -175,7 +174,7 @@ call remote#host#Register('hello', 'x', function('s:Requirehello'))
 call remote#host#RegisterPlugin('hello', '0', [
     \ {'type': 'function', 'name': 'Hello', 'sync': 1, 'opts': {}},
     \ ])
-    
+
 A remote plugin can define functions, commands and auto-commands for Neovim. Each of these is represented by a Racket callback function which gets called with the necessary arguments applied.
 
 Each of the following procdures takes in a name, a function and a number of keyword arguments. The name is the name under which the function or command will be registered in Neovim and the same restrictions apply as for all user-defined functions and commands in Neovim.
@@ -185,10 +184,10 @@ All procedures have a #:sync keyword argument; if it is true the remote call wil
             I am not yet sure about the arity of callback procedures, so take that information with a grain of salt.
 
         procedure
-        (nvim-function	 	name	 	 	 	 
-         	 	proc	 	 	 	 
-         	 [	#:range range?	 	 	 	 
-         	 	#:eval eval	 	 	 	 
+        (nvim-function	 	name
+         	 	proc
+         	 [	#:range range?
+         	 	#:eval eval
          	 	#:sync sync?])	 	→	 	any
 
       name : string?
@@ -204,15 +203,15 @@ proc is a procedure of one or two arguments; the first argument is a vector of a
 If sync is false the function call will not block Neovim, but Neovim will not receive the return value of proc, it will use some default value like 0 instead. Asynchronous functions are only useful for their side effects.
 
         procedure
-        (nvim-command	 	name	 	 	 	 
-         	 	proc	 	 	 	 
-         	 [	#:nargs nargs	 	 	 	 
-         	 	#:complete complete	 	 	 	 
-         	 	#:range range	 	 	 	 
-         	 	#:count count	 	 	 	 
-         	 	#:bang bang?	 	 	 	 
-         	 	#:register register?	 	 	 	 
-         	 	#:eval eval	 	 	 	 
+        (nvim-command	 	name
+         	 	proc
+         	 [	#:nargs nargs
+         	 	#:complete complete
+         	 	#:range range
+         	 	#:count count
+         	 	#:bang bang?
+         	 	#:register register?
+         	 	#:eval eval
          	 	#:sync sync?])	 	→	 	any
 
       name : string?
@@ -239,10 +238,10 @@ bang is either #f (no bang allowed) or #t (bang allowed). If #t, an integer will
 register is either #f (no register allowed) or #t (register allowed). If #t, a string containing the register name will be passed to proc. If no register was given that string will be empty.
 
         procedure
-        (nvim-autocmd	 	name	 	 	 	 
-         	 	proc	 	 	 	 
-         	 [	#:pattern pattern	 	 	 	 
-         	 	#:eval eval	 	 	 	 
+        (nvim-autocmd	 	name
+         	 	proc
+         	 [	#:pattern pattern
+         	 	#:eval eval
          	 	#:sync sync?])	 	→	 	any
 
       name : string?

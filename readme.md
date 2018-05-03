@@ -1,15 +1,15 @@
-# Neovim Client Library
-## A Nim Msgpack RPC API
----
+# Cross Platform Neovim Client Library for Nim
 
 ### What is this?
 
+* It is a Msgpack RPC API implementation
 * You can use this library to write Neovim plugin in Nim
 * You can use this library to embed Neovim in your application
 * You can write Neovim GUI and communicate with Neovim using this library
 
 ### Features
 
+* Supported OSes: Windows, Linux, MacOS
 * Support batch mode a.k.a. call_atomic
 * Communicate with Neovim using different channels:
   * stdio on windows/unix
