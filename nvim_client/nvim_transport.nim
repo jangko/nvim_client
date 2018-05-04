@@ -82,7 +82,7 @@ proc closePipe(self: var TransportLayer) =
   discard closeHandle(self.hPipe)
 
 proc connectStdio*(self: var TransportLayer, address: string, timeOut: int): bool =
-  self.process = startProcess("nvim.exe", "", [address], nil, {poUsePath})
+  self.process = startProcess(address, "", [], nil, {poUsePath, poEvalCommand})
   result = self.process.running()
 
 proc writeStdio*(self: var TransportLayer, data: string): bool =

@@ -16,7 +16,7 @@ proc del_var*(self: var NvimBatch, tab: NvimTabPage, name: string) =
   self.store("nvim_tabpage_del_var", brkVoid, tab, name)
 
 proc get_win*(self: var NvimBatch, tab: NvimTabPage) =
-  self.store("nvim_tabpage_get_win", brkWindow)
+  self.store("nvim_tabpage_get_win", brkWindow, tab)
 
 proc get_number*(self: var NvimBatch, tab: NvimTabPage) =
   self.store("nvim_tabpage_get_number", brkInt, tab)
@@ -113,7 +113,7 @@ proc set_option*[T](self: var NvimBatch, win: NvimWindow, name: string, value: T
   self.store("nvim_win_set_option", brkVoid, win, name, value)
 
 proc get_tabpage*(self: var NvimBatch, win: NvimWindow) =
-  self.store("nvim_get_tabpage", brkTabPage, win)
+  self.store("nvim_win_get_tabpage", brkTabPage, win)
 
 proc get_number*(self: var NvimBatch, win: NvimWindow) =
   self.store("nvim_win_get_number", brkInt, win)

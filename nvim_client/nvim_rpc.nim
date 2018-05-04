@@ -21,7 +21,7 @@
 # THE SOFTWARE.
 #-------------------------------------
 
-import macros, msgpack4nim as msgpack, msgpack2any, nvim_transport
+import macros, msgpack4nim as msgpack, msgpack2any, nvim_transport, strutils
 
 type
   MessageType = enum
@@ -35,6 +35,9 @@ type
     msgId: int
     output: MsgStream
     input: string
+    lastError*: string
+    hasError*: bool
+    errorCode*: int
 
   NvimClient* = object
     rpc*: NvimRpc
@@ -127,49 +130,60 @@ proc toString*(msg: MsgAny): string =
   else: result = ""
 
 proc toSeqString*(msg: MsgAny): seq[string] =
-  assert(msg.kind == msgArray)
-  result = newSeq[string](msg.len)
-  for i in 0..<msg.len: result[i] = msg[i].stringVal
+  if msg.kind == msgArray:
+    result = newSeq[string](msg.len)
+    for i in 0..<msg.len: result[i] = msg[i].stringVal
+  else:
+    result = @[]
 
 proc toVoid*(msg: MsgAny) =
   assert(msg.kind == msgNull)
 
 proc toBuffer*(msg: MsgAny, rpc: NvimRpc): NvimBuffer =
-  assert msg.kind == msgExt
-  assert msg.extType == 0
-  result = NvimBuffer(id: msg.extType.int, value: msg.extData, rpc: rpc)
+  if msg.kind == msgExt:
+    assert msg.extType == 0
+    result = NvimBuffer(id: msg.extType.int, value: msg.extData, rpc: rpc)
 
 proc toWindow*(msg: MsgAny, rpc: NvimRpc): NvimWindow =
-  assert msg.kind == msgExt
-  assert msg.extType == 1
-  result = NvimWindow(id: msg.extType.int, value: msg.extData, rpc: rpc)
+  if msg.kind == msgExt:
+    assert msg.extType == 1
+    result = NvimWindow(id: msg.extType.int, value: msg.extData, rpc: rpc)
 
 proc toTabPage*(msg: MsgAny, rpc: NvimRpc): NvimTabPage =
-  assert msg.kind == msgExt
-  assert msg.extType == 2
-  result = NvimTabPage(id: msg.extType.int, value: msg.extData, rpc: rpc)
+  if msg.kind == msgExt:
+    assert msg.extType == 2
+    result = NvimTabPage(id: msg.extType.int, value: msg.extData, rpc: rpc)
 
 proc toSeqBuffer*(msg: MsgAny, rpc: NvimRpc): seq[NvimBuffer] =
-  assert(msg.kind == msgArray)
-  result = newSeq[NvimBuffer](msg.len)
-  for i in 0..<msg.len:  result[i] = msg[i].toBuffer(rpc)
+  if msg.kind == msgArray:
+    result = newSeq[NvimBuffer](msg.len)
+    for i in 0..<msg.len:  result[i] = msg[i].toBuffer(rpc)
+  else:
+    result = @[]
 
 proc toSeqWindow*(msg: MsgAny, rpc: NvimRpc): seq[NvimWindow] =
-  assert(msg.kind == msgArray)
-  result = newSeq[NvimWindow](msg.len)
-  for i in 0..<msg.len:  result[i] = msg[i].toWindow(rpc)
+  if msg.kind == msgArray:
+    result = newSeq[NvimWindow](msg.len)
+    for i in 0..<msg.len:  result[i] = msg[i].toWindow(rpc)
+  else:
+    result = @[]
 
 proc toSeqTabPage*(msg: MsgAny, rpc: NvimRpc): seq[NvimTabPage] =
-  assert(msg.kind == msgArray)
-  result = newSeq[NvimTabPage](msg.len)
-  for i in 0..<msg.len:  result[i] = msg[i].toTabPage(rpc)
+  if msg.kind == msgArray:
+    result = newSeq[NvimTabPage](msg.len)
+    for i in 0..<msg.len:  result[i] = msg[i].toTabPage(rpc)
+  else:
+    result = @[]
 
 proc toPos*(msg: MsgAny): tuple[x, y: int] =
-  assert(msg.kind == msgArray)
-  result = (msg[0].toInt, msg[1].toInt)
+  if msg.kind == msgArray:
+    result = (msg[0].toInt, msg[1].toInt)
 
 proc toBatchResult*(msg: MsgAny, batch: NvimBatch, rpc: NvimRpc): seq[BatchResult] =
-  assert msg.kind == msgArray
+  if msg.kind != msgArray:
+    result = @[]
+    return
+
   assert msg.len == 2
 
   var resultLen = msg[0].len
@@ -196,7 +210,7 @@ proc toBatchResult*(msg: MsgAny, batch: NvimBatch, rpc: NvimRpc): seq[BatchResul
     of brkTabPage: result[i] = BatchResult(kind: brkTabPage, tabVal: msg[0][i].toTabPage(rpc))
     of brkBuffer: result[i] = BatchResult(kind: brkBuffer, bufVal: msg[0][i].toBuffer(rpc))
     of brkVoid, brkError: discard
-    
+
 proc rpc_connect_pipe*(address: string, timeOut: int): NvimRpc =
   new(result)
   result.io = initTransportLayer(tkPipe)
@@ -204,9 +218,10 @@ proc rpc_connect_pipe*(address: string, timeOut: int): NvimRpc =
     result.output = initMsgStream(1024)
     result.input = newString(4096)
     result.msgId = 0
+    result.lastError = ""
     return result
   result = nil
-  
+
 proc rpc_connect_stdio*(address: string, timeOut: int): NvimRpc =
   new(result)
   result.io = initTransportLayer(tkStdio)
@@ -214,6 +229,7 @@ proc rpc_connect_stdio*(address: string, timeOut: int): NvimRpc =
     result.output = initMsgStream(1024)
     result.input = newString(4096)
     result.msgId = 0
+    result.lastError = ""
     return result
   result = nil
 
@@ -234,25 +250,37 @@ proc make_request*(self: NvimRpc, methodName: string, args: varargs[string]): tu
 
   if self.io.write(self.output.data):
     let bytesRead = self.io.read(self.input)
-    if bytesRead > 0:
+    if bytesRead > 0:      
       var m = toAny(self.input)
+      echo m[2].len
+      #echo pretty(m)
+      
       assert m.kind == msgArray
       assert m.len == 4
+
       assert m[0].toInt == Response.int
       assert m[1].toInt == msgId
       let error = m[2].kind != msgNull
-      if error: return (true, m[2][1].stringVal, m[3])
+      if error:
+        self.errorCode = m[2][0].toInt
+        return (true, m[2][1].stringVal, m[3])
       else: return (false, "", m[3])
 
+  self.errorCode = -1
   result = (true, "io error", MsgAny(nil))
 
 proc request_aux*(self: NvimRpc, methodName: string, args: varargs[string]): MsgAny =
   if self == nil:
     echo "no connection"
     return nil
+  self.hasError = false
+  self.errorCode = 0
+  self.lastError = ""
   var res = self.make_request(methodName, args)
   result = res.response
-  if res.err: echo res.errMsg
+  if res.err:
+    self.hasError = true
+    self.lastError = res.errMsg
 
 proc guessPacker(n: NimNode): string {.compileTime.} =
   let argT = getType(n)

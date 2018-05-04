@@ -23,6 +23,15 @@
 
 import nvim_rpc, msgpack4nim, msgpack2any
 
+proc has_error*(self: NvimTabPage): bool =
+  self.rpc.hasError
+
+proc last_error*(self: NvimTabPage): string =
+  self.rpc.lastError
+
+proc error_code*(self: NvimTabPage): int =
+  self.rpc.errorCode
+
 proc list_wins*(self: NvimTabPage): seq[NvimWindow] =
   self.rpc.request("nvim_tabpage_list_wins", self).toSeqWindow(self.rpc)
 
@@ -36,7 +45,7 @@ proc del_var*(self: NvimTabPage, name: string) =
   self.rpc.request("nvim_tabpage_del_var", self, name).toVoid
 
 proc get_win*(self: NvimTabPage): NvimWindow =
-  self.rpc.request("nvim_tabpage_get_win").toWindow(self.rpc)
+  self.rpc.request("nvim_tabpage_get_win", self).toWindow(self.rpc)
 
 proc get_number*(self: NvimTabPage): int =
   self.rpc.request("nvim_tabpage_get_number", self).toInt

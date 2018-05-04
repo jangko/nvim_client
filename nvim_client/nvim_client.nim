@@ -26,15 +26,27 @@ export nvim_rpc, msgpack4nim, msgpack2any
 
 proc nvimClientConnectPipe*(address: string, timeOut = 5000): NvimClient =
   result.rpc = rpc_connect_pipe(address, timeOut)
-  
+
 proc nvimClientConnectStdio*(address: string, timeOut = 5000): NvimClient =
   result.rpc = rpc_connect_stdio(address, timeOut)
+
+proc is_valid*(self: NvimClient): bool =
+  result = self.rpc != nil
 
 proc close*(self: NvimClient) =
   self.rpc.close()
 
 proc listen*(self: NvimClient) =
   self.rpc.listen()
+
+proc has_error*(self: NvimClient): bool =
+  self.rpc.hasError
+
+proc last_error*(self: NvimClient): string =
+  self.rpc.lastError
+
+proc error_code*(self: NvimClient): int =
+  self.rpc.errorCode
 
 proc ui_attach*(self: NvimClient, width, height: int, options: MsgAny) =
   assert options.kind == msgMap

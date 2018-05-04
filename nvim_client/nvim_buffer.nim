@@ -23,11 +23,20 @@
 
 import nvim_rpc, msgpack4nim, msgpack2any
 
+proc has_error*(self: NvimBuffer): bool =
+  self.rpc.hasError
+
+proc last_error*(self: NvimBuffer): string =
+  self.rpc.lastError
+
+proc error_code*(self: NvimBuffer): int =
+  self.rpc.errorCode
+
 proc line_count*(self: NvimBuffer): int =
   self.rpc.request("nvim_buf_line_count", self).toInt
 
-proc get_lines*(self: NvimBuffer, start, stop: int, strictIndexing: bool): seq[string] =
-  self.rpc.request("nvim_buf_get_lines", self, start, stop, strictIndexing).toSeqString
+proc get_lines*(self: NvimBuffer, start, stop: int, strict_indexing: bool): seq[string] =
+  self.rpc.request("nvim_buf_get_lines", self, start, stop, strict_indexing).toSeqString
 
 proc set_lines*(self: NvimBuffer, start, stop: int, strict_indexing: bool, replacement: openArray[string]) =
   self.rpc.request("nvim_buf_set_lines", self, start, stop, strict_indexing, replacement).toVoid

@@ -23,6 +23,15 @@
 
 import nvim_rpc, msgpack4nim, msgpack2any
 
+proc has_error*(self: NvimWindow): bool =
+  self.rpc.hasError
+
+proc last_error*(self: NvimWindow): string =
+  self.rpc.lastError
+
+proc error_code*(self: NvimWindow): int =
+  self.rpc.errorCode
+
 proc get_buf*(self: NvimWindow): NvimBuffer =
   self.rpc.request("nvim_win_get_buf", self).toBuffer(self.rpc)
 
@@ -35,7 +44,7 @@ proc set_cursor*(self: NvimWindow, x, y: int) =
 proc get_height*(self: NvimWindow): int =
   self.rpc.request("nvim_win_get_height", self).toInt
 
-proc set_height*(self: NvimWindow, height: int): int =
+proc set_height*(self: NvimWindow, height: int) =
   self.rpc.request("nvim_win_set_height", self, height).toVoid
 
 proc get_width*(self: NvimWindow): int =
@@ -60,7 +69,7 @@ proc set_option*[T](self: NvimWindow, name: string, value: T) =
   self.rpc.request("nvim_win_set_option", self, name, value).toVoid
 
 proc get_tabpage*(self: NvimWindow): NvimTabPage =
-  self.rpc.request("nvim_get_tabpage", self).toTabPage(self.rpc)
+  self.rpc.request("nvim_win_get_tabpage", self).toTabPage(self.rpc)
 
 proc get_number*(self: NvimWindow): int =
   self.rpc.request("nvim_win_get_number", self).toInt
