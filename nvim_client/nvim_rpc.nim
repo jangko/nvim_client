@@ -33,11 +33,11 @@ type
   NvimRpc* = ref object
     io: TransportLayer
     msgId: int
-    output: MsgStream
-    input: string
     lastError*: string
     hasError*: bool
     errorCode*: int
+    null: MsgAny
+    notifyResponse*: bool
 
   NvimClient* = object
     rpc*: NvimRpc
@@ -185,11 +185,11 @@ proc toBatchResult*(msg: MsgAny, batch: NvimBatch, rpc: NvimRpc): seq[BatchResul
     return
 
   assert msg.len == 2
-
   var resultLen = msg[0].len
   let error = msg[1].kind != msgNull
   result = newSeq[BatchResult](resultLen + error.int)
   let len = min(resultLen, batch.calls.len)
+
   if error:
     assert msg[1].kind == msgArray
     assert msg[1].len == 3
@@ -215,8 +215,7 @@ proc rpc_connect_pipe*(address: string, timeOut: int): NvimRpc =
   new(result)
   result.io = initTransportLayer(tkPipe)
   if result.io.connect(address, timeOut):
-    result.output = initMsgStream(1024)
-    result.input = newString(4096)
+    result.null = anyNull()
     result.msgId = 0
     result.lastError = ""
     return result
@@ -226,8 +225,7 @@ proc rpc_connect_stdio*(address: string, timeOut: int): NvimRpc =
   new(result)
   result.io = initTransportLayer(tkStdio)
   if result.io.connect(address, timeOut):
-    result.output = initMsgStream(1024)
-    result.input = newString(4096)
+    result.null = anyNull()
     result.msgId = 0
     result.lastError = ""
     return result
@@ -236,51 +234,83 @@ proc rpc_connect_stdio*(address: string, timeOut: int): NvimRpc =
 proc close*(self: NvimRpc) =
   self.io.close()
 
-proc make_request*(self: NvimRpc, methodName: string, args: varargs[string]): tuple[err: bool, errMsg: string, response: MsgAny] =
-  self.output.reset()
-  self.output.pack_array(4)
-  self.output.pack(Request)
-  self.output.pack(self.msgId)
-  self.output.pack(methodName)
-  self.output.pack_array(args.len)
-  for x in args: self.output.write(x)
-  let msgId = self.msgId
+var debug* = false
+
+proc process_packet*(self: NvimRpc, m: MsgAny): MsgAny =
+  assert m.kind == msgArray
+  assert m.len >= 3 and m.len <= 4
+
+  case MessageType(m[0].toInt())
+  of Notification:
+    assert m[1].kind == msgString
+    assert m[2].kind == msgArray
+
+    if self.notifyResponse:      
+      var input = ""
+      self.notifyResponse = false
+      if self.io.read(input) > 0:
+        var m = toAny(input)
+        return self.process_packet(m)
+
+    return self.null
+  of Request:
+    assert m[1].kind in {msgInt, msgUint}
+    assert m[2].kind == msgString
+    assert m[3].kind == msgArray
+
+    #var s = initMsgStream()
+    #s.pack_array(4)
+    #s.pack(Response)
+    #s.pack(m[1].toInt)
+    #s.write(pack_value_nil)
+    ##s.pack((1, "no function defined"))
+    #s.write(pack_value_nil)
+    ##s.pack("hello from my friend")
+    #discard self.io.write(s.data)
+    return self.null
+  of Response:
+    assert(m[1].toInt == self.msgId - 1, $m[1].toInt & " " & $(self.msgId - 1))
+    self.hasError = m[2].kind != msgNull
+    if self.hasError:
+      self.errorCode = m[2][0].toInt
+      self.lastError = m[2][1].stringVal
+      return self.null
+    return m[3]
+  else:
+    self.hasError = true
+    self.lastError = "packet error"
+    self.errorCode = -2
+    return self.null
+
+proc make_request*(self: NvimRpc, methodName: string, args: varargs[string]): MsgAny =
+  var output = initMsgStream()
+  output.pack_array(4)
+  output.pack(Request)
+  output.pack(self.msgId)
+  output.pack(methodName)
+  output.pack_array(args.len)
+  for x in args: output.write(x)
   inc(self.msgId)
-  #echo stringify(self.output.data)
+  #echo stringify(output.data)
 
-  if self.io.write(self.output.data):
-    let bytesRead = self.io.read(self.input)
-    if bytesRead > 0:      
-      var m = toAny(self.input)
-      echo m[2].len
-      #echo pretty(m)
-      
-      assert m.kind == msgArray
-      assert m.len == 4
+  if self.io.write(output.data):
+    var input = ""
+    if self.io.read(input) > 0:
+      var m = toAny(input)
+      if debug: echo m
+      return self.process_packet(m)
 
-      assert m[0].toInt == Response.int
-      assert m[1].toInt == msgId
-      let error = m[2].kind != msgNull
-      if error:
-        self.errorCode = m[2][0].toInt
-        return (true, m[2][1].stringVal, m[3])
-      else: return (false, "", m[3])
-
+  self.hasError = true
   self.errorCode = -1
-  result = (true, "io error", MsgAny(nil))
+  self.lastError = "io error"
+  return self.null
 
 proc request_aux*(self: NvimRpc, methodName: string, args: varargs[string]): MsgAny =
-  if self == nil:
-    echo "no connection"
-    return nil
+  if self == nil: return self.null
   self.hasError = false
   self.errorCode = 0
   self.lastError = ""
-  var res = self.make_request(methodName, args)
-  result = res.response
-  if res.err:
-    self.hasError = true
-    self.lastError = res.errMsg
+  result = self.make_request(methodName, args)
 
 proc guessPacker(n: NimNode): string {.compileTime.} =
   let argT = getType(n)
@@ -307,36 +337,3 @@ macro store*(self: var NvimBatch, methodName: string, returnKind: BatchReturnKin
   for i in 0..<args.len: callexpr.add(", " & guessPacker(args[i]) & toStrLit(args[i]).strVal & ")")
   callexpr.add(")")
   result = parseStmt(callexpr)
-
-proc listen*(self: NvimRpc) =
-  let bytesRead = self.io.read(self.input)
-  if bytesRead > 0:
-    var m = toAny(self.input)
-    echo m
-    assert m.kind == msgArray
-    if m.len == 3:
-      # it is a notify
-      assert m[0].toInt == Notification.int
-      assert m[1].kind == msgString
-      assert m[1].kind == msgArray
-    elif m.len == 4:
-      # it is a request
-      assert m[0].toInt == Request.int
-      assert m[1].kind in {msgInt, msgUint}
-      assert m[2].kind == msgString
-      assert m[3].kind == msgArray
-
-      var s = initMsgStream()
-      s.pack_array(4)
-      s.pack(Response)
-      s.pack(m[1].toInt)
-      s.write(pack_value_nil)
-      #s.pack((1, "no function defined"))
-      s.write(pack_value_nil)
-      #s.pack("hello from my friend")
-      discard self.io.write(s.data)
-
-    else:
-      echo "wrong packet len"
-
-

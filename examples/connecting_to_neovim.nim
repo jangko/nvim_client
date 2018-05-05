@@ -1,7 +1,7 @@
 import nvim
 
 proc main() =
-  var nvim = nvimClientConnect("\\\\.\\pipe\\nvim-4492-0")
+  var nvim = nvimClientConnect("\\\\.\\pipe\\nvim-1476-0")
   var win = nvim.get_current_win()
   #var buf = win.get_buf()
   #let line_count = buf.line_count()
@@ -35,6 +35,7 @@ proc main() =
   b.get_current_line()
 
   var res = nvim.call_atomic(b)
+  echo res
   for c in res:
     echo c.kind
     if c.kind == brkString: echo c.strVal

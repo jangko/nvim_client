@@ -76,7 +76,13 @@ proc readPipe(self: var TransportLayer, buffer: var string): int =
 
     bytesRead = 0'i32
 
+  buffer.setLen(totalRead)
   result = totalRead
+
+proc moreDataPipe(self: var TransportLayer): bool =
+  var bytesAvail = 0'i32
+  if not peekNamedPipe(self.hPipe, nil, 0'i32, nil, bytesAvail.addr, nil): return false
+  result = bytesAvail != 0
 
 proc closePipe(self: var TransportLayer) =
   discard closeHandle(self.hPipe)
@@ -96,6 +102,9 @@ proc readStdio*(self: var TransportLayer, buffer: var string): int =
     result = buffer.len
     if result != 0: break
 
+proc moreDataStdio(self: var TransportLayer): bool =
+  result = self.process.outputStream.atEnd()
+
 proc closeStdio*(self: var TransportLayer) =
   osproc.kill(self.process)
 
@@ -106,6 +115,9 @@ proc writeSocket*(self: var TransportLayer, data: string): bool =
   discard
 
 proc readSocket*(self: var TransportLayer, buffer: var string): int =
+  discard
+
+proc moreDataSocket(self: var TransportLayer): bool =
   discard
 
 proc closeSocket*(self: var TransportLayer) =
@@ -128,6 +140,12 @@ proc read*(self: var TransportLayer, buffer: var string): int =
   of tkPipe: result = self.readPipe(buffer)
   of tkStdio: result = self.readStdio(buffer)
   of tkSocket: result = self.readSocket(buffer)
+
+proc moreData*(self: var TransportLayer): bool =
+  case self.kind
+  of tkPipe: result = self.moreDataPipe()
+  of tkStdio: result = self.moreDataStdio()
+  of tkSocket: result = self.moreDataSocket()
 
 proc close*(self: var TransportLayer) =
   case self.kind

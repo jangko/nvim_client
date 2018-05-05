@@ -36,9 +36,6 @@ proc is_valid*(self: NvimClient): bool =
 proc close*(self: NvimClient) =
   self.rpc.close()
 
-proc listen*(self: NvimClient) =
-  self.rpc.listen()
-
 proc has_error*(self: NvimClient): bool =
   self.rpc.hasError
 
@@ -50,6 +47,7 @@ proc error_code*(self: NvimClient): int =
 
 proc ui_attach*(self: NvimClient, width, height: int, options: MsgAny) =
   assert options.kind == msgMap
+  self.rpc.notifyResponse = true
   self.rpc.request("nvim_ui_attach", width, height, options).toVoid
 
 proc ui_try_resize*(self: NvimClient, width, height: int) =
@@ -198,3 +196,4 @@ proc parse_expression*(self: NvimClient, expression, flags: string, highlight: b
 
 proc call_atomic*(self: NvimClient, calls: NvimBatch): seq[BatchResult] =
   self.rpc.request("nvim_call_atomic", calls).toBatchResult(calls, self.rpc)
+
