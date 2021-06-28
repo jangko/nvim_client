@@ -1,4 +1,4 @@
-import winlean, os, osproc, streams
+import os, osproc, streams, asynctools
 
 type
   TransportKind* = enum
@@ -8,84 +8,33 @@ type
 
   TransportLayer* = object
     case kind: TransportKind
-    of tkPipe: hPipe: Handle
+    of tkPipe:
+      ipc: AsyncIpc
+      handle: AsyncIpcHandle
     of tkStdio: process: Process
     of tkSocket: nil
 
-proc initTransportLayer*(kind: TransportKind): TransportLayer =
-  result.kind = kind
-  case kind
-  of tkPipe: result.hPipe = Handle(0)
-  else: discard
-
-proc waitNamedPipeW(name: WideCString, nTimeOut: DWORD): WINBOOL {.
-  stdcall, dynlib: "kernel32", importc: "WaitNamedPipeW".}
+func initTransportLayer*(kind: TransportKind): TransportLayer =
+  discard
 
 proc connectPipe(self: var TransportLayer, address: string, timeOut: int): bool =
-  const
-    #PIPE_TYPE_MESSAGE      = 0x00000004'i32
-    #PIPE_READMODE_MESSAGE  = 0x00000002'i32
-    ERROR_PIPE_BUSY        = 231
-
-  let pipeName = newWideCString(address)
-  let openMode = GENERIC_READ or GENERIC_WRITE
-
-  # Try to open a named pipe; wait for it, if necessary.
-  while true:
-    self.hPipe = createFileW(pipeName, openMode, 0, nil, OPEN_EXISTING, 0, 0.Handle)
-
-    # Break if the pipe handle is valid.
-    if self.hPipe != INVALID_HANDLE_VALUE: break
-
-    # Exit if an error other than ERROR_PIPE_BUSY occurs.
-    if getLastError() != ERROR_PIPE_BUSY:
-       echo "Could not open pipe. GLE = ", getLastError()
-       return false
-
-    # All pipe instances are busy, so wait for 20 seconds.
-    if waitNamedPipeW(pipeName, timeOut.DWORD) == 0:
-       echo "Could not open pipe: " & $timeOut & "ms wait timed out."
-       return false
-
+  self.ipc = createIpc(address)
+  self.handle = open(address, sideWriter)
   result = true
 
 proc writePipe(self: var TransportLayer, data: string): bool =
-  var dwWritten: int32
-  if self.hPipe == INVALID_HANDLE_VALUE: return false
-  let res = writeFile(self.hPipe, data.cstring, data.len.int32, dwWritten.addr, nil)
-  result = res != 0 and dwWritten == data.len.int32
+  let fut = self.handle.write(cast[pointer](data), data.len)
+
+  result = true
 
 proc readPipe(self: var TransportLayer, buffer: var string): int =
-  var
-    bytesRead = 0'i32
-    temp: array[2048, char]
-    totalRead = 0
-    success = false
-    bytesAvail = 0'i32
+  let fut = self.handle.readInto(cast[pointer](buffer), buffer.len)
 
-  while true:
-    success = readFile(self.hPipe, cast[cstring](temp[0].addr), temp.len.int32, bytesRead.addr, nil) == 1
-    if buffer.len + bytesRead.int > buffer.len:
-       buffer.setLen(buffer.len + bytesRead.int)
-
-    copyMem(buffer[totalRead].addr, temp[0].addr, bytesRead.int)
-    inc(totalRead, bytesRead.int)
-
-    if peekNamedPipe(self.hPipe, nil, 0'i32, nil, bytesAvail.addr, nil) and bytesAvail == 0:
-      break
-
-    bytesRead = 0'i32
-
-  buffer.setLen(totalRead)
-  result = totalRead
-
-proc moreDataPipe(self: var TransportLayer): bool =
-  var bytesAvail = 0'i32
-  if not peekNamedPipe(self.hPipe, nil, 0'i32, nil, bytesAvail.addr, nil): return false
-  result = bytesAvail != 0
+proc moreDataPipe(self: var TransportLayer): bool = discard
 
 proc closePipe(self: var TransportLayer) =
-  discard closeHandle(self.hPipe)
+  self.ipc.close()
+  self.handle.close()
 
 proc connectStdio*(self: var TransportLayer, address: string, timeOut: int): bool =
   self.process = startProcess(address, "", [], nil, {poUsePath, poEvalCommand})
