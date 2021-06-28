@@ -1,4 +1,4 @@
-import os, osproc, streams, sys/[handles, pipes]
+import os, osproc, streams, asynctools
 
 type
   TransportKind* = enum
@@ -8,32 +8,33 @@ type
 
   TransportLayer* = object
     case kind: TransportKind
-    of tkPipe: file: File
+    of tkPipe:
+      ipc: AsyncIpc
+      handle: AsyncIpcHandle
     of tkStdio: process: Process
     of tkSocket: nil
 
-func initTransportLayer*(kind: TransportKind): TransportLayer = discard
+func initTransportLayer*(kind: TransportKind): TransportLayer =
+  discard
 
 proc connectPipe(self: var TransportLayer, address: string, timeOut: int): bool =
-  try:
-    self.file = open(address, fmReadWriteExisting)
-  except IOError:
-    echo "Error connecting with pipe"
+  self.ipc = createIpc(address)
+  self.handle = open(address, sideWriter)
+  result = true
 
 proc writePipe(self: var TransportLayer, data: string): bool =
-  try:
-    self.file.write(data)
-  except IOError:
-    return false
+  let fut = self.handle.write(cast[pointer](data), data.len)
 
   result = true
 
-proc readPipe(self: var TransportLayer, buffer: var string): int = discard
+proc readPipe(self: var TransportLayer, buffer: var string): int =
+  let fut = self.handle.readInto(cast[pointer](buffer), buffer.len)
 
 proc moreDataPipe(self: var TransportLayer): bool = discard
 
 proc closePipe(self: var TransportLayer) =
-  self.file.close()
+  self.ipc.close()
+  self.handle.close()
 
 proc connectStdio*(self: var TransportLayer, address: string, timeOut: int): bool =
   self.process = startProcess(address, "", [], nil, {poUsePath, poEvalCommand})
